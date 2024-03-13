@@ -307,10 +307,10 @@ jobs:
           [[ -d "output" ]] || mkdir output
 
           # 将所有的文件复制到 output 目录
-          cp -f bin/targets/*/*/* output/
+          cp -rf bin/targets/*/*/* output/
 
           # 将 .config 配置文件复制到 output 目录为config
-          cp -f .config output/config
+          cp -rf .config output/config
 
           # 切换到 output 目录，进行上传文件前的准备
           cd output/
