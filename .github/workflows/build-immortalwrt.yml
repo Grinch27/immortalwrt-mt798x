@@ -32,10 +32,10 @@ env:
   REPO_BRANCH: openwrt-21.02
   TZ: America/New_York
   # ETC
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: ${GITHUB_WORKSPACE}/defconfig/${{ inputs.defconfig_config }}.config
-  DIY_P1_SH: config/immortalwrt-master/diy-part1.sh
-  DIY_P2_SH: config/immortalwrt-master/diy-part2.sh
+  FEEDS_CONF: ${GITHUB_WORKSPACE}/openwrt/feeds.conf.default
+  CONFIG_FILE: ${GITHUB_WORKSPACE}/openwrt/defconfig/${{ inputs.defconfig_config }}.config
+  DIY_P1_SH: ${GITHUB_WORKSPACE}/openwrt/config/immortalwrt-master/diy-part1.sh
+  DIY_P2_SH: ${GITHUB_WORKSPACE}/openwrt/config/immortalwrt-master/diy-part2.sh
 
 jobs:
   build:
@@ -241,7 +241,7 @@ jobs:
           cd openwrt/
 
           # 执行 DIY_P1_SH 环境变量指定的脚本进行一些自定义的操作，如修改配置文件、安装额外的软件包等
-          ${GITHUB_WORKSPACE}/${DIY_P1_SH}
+          ${DIY_P1_SH}
 
       - name: Update feeds
         run: cd openwrt/ && ./scripts/feeds update -a
@@ -256,6 +256,7 @@ jobs:
 
           # CONFIG_FILE 环境变量指定的文件通常是 OpenWrt 的配置文件，包含了要编译的软件包、目标系统、硬件配置等信息。检查如果存在，则将这个文件复制到 openwrt/.config
           # cp -f $GITHUB_WORKSPACE/.config $GITHUB_WORKSPACE/openwrt/
+          echo -e "CONFIG_FILE: ${CONFIG_FILE}"
           [[ -e "${CONFIG_FILE}" ]] && cp -f ${CONFIG_FILE} openwrt/.config
 
           # 修改 DIY_P2_SH 环境变量指定的脚本文件的权限，使其后面可以执行
@@ -264,9 +265,8 @@ jobs:
           # 切换到 openwrt 源代码目录
           cd openwrt/
 
-          # 执行 DIY_P2_SH 环境变量指定的脚本
-          # 这个脚本可以进行一些自定义的操作，如修改配置文件、安装额外的软件包等
-          ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+          # 执行 DIY_P2_SH 环境变量指定的脚本 可以进行一些自定义的操作，如修改配置文件、安装额外的软件包等
+          ${DIY_P2_SH}
 
       - name: Download package
         id: package
@@ -296,8 +296,8 @@ jobs:
           # 将 "status=success" 写入到 GITHUB_OUTPUT 环境变量指定的文件中 表示编译成功
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Clear server space
-        id: clean
+      - name: Copy to output
+        id: output
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
         run: |
           # 切换到源代码目录
@@ -321,6 +321,13 @@ jobs:
           # 对 output 目录中的每个 .bin 文件，生成一个包含其 sha256sum 的文件
           for file in *.bin; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
 
+          # 将 "status=success" 写入到 GITHUB_OUTPUT 环境变量指定的文件中 表示步骤成功完成
+          echo "status=success" >> ${GITHUB_OUTPUT}
+
+      - name: Clear server space
+        id: clean
+        if: ${{ steps.output.outputs.status }} == 'success' && !cancelled()
+        run: |
           # 清理服务器空间，删除output目录以外的所有文件和目录 
           rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
 
