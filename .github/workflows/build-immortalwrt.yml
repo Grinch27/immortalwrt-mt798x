@@ -32,10 +32,10 @@ env:
   REPO_BRANCH: openwrt-21.02
   TZ: America/New_York
   # ETC
-  FEEDS_CONF: ${GITHUB_WORKSPACE}/openwrt/feeds.conf.default
-  CONFIG_FILE: ${GITHUB_WORKSPACE}/openwrt/defconfig/${{ inputs.defconfig_config }}.config
-  DIY_P1_SH: ${GITHUB_WORKSPACE}/openwrt/config/immortalwrt-master/diy-part1.sh
-  DIY_P2_SH: ${GITHUB_WORKSPACE}/openwrt/config/immortalwrt-master/diy-part2.sh
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: defconfig/${{ inputs.defconfig_config }}.config
+  DIY_P1_SH: config/immortalwrt-master/diy-part1.sh
+  DIY_P2_SH: config/immortalwrt-master/diy-part2.sh
 
 jobs:
   build:
@@ -231,14 +231,14 @@ jobs:
 
       - name: Load custom feeds
         run: |
+          # 切换到 openwrt 源代码目录
+          cd openwrt/
+
           # 检查 FEEDS_CONF 环境变量指定的文件是否存在 如果存在，则将这个文件复制到 openwrt/feeds.conf.default 用于指定 feeds 的源
           [[ -f "${FEEDS_CONF}" ]] && cp -f ${FEEDS_CONF} openwrt/feeds.conf.default
 
           # 修改 DIY_P1_SH 环境变量指定的文件的权限，使其可以执行
           chmod +x ${DIY_P1_SH}
-
-          # 切换到 openwrt 目录
-          cd openwrt/
 
           # 执行 DIY_P1_SH 环境变量指定的脚本进行一些自定义的操作，如修改配置文件、安装额外的软件包等
           ${DIY_P1_SH}
@@ -254,16 +254,17 @@ jobs:
           # "files" 目录通常包含一些要添加到固件中的文件,检查如果存在"files" 目录，则将目录移动到 openwrt/files
           [[ -d "files" ]] && mv -f files openwrt/files
 
+          # 切换到 openwrt 源代码目录
+          cd openwrt/
+
           # CONFIG_FILE 环境变量指定的文件通常是 OpenWrt 的配置文件，包含了要编译的软件包、目标系统、硬件配置等信息。检查如果存在，则将这个文件复制到 openwrt/.config
           # cp -f $GITHUB_WORKSPACE/.config $GITHUB_WORKSPACE/openwrt/
+          # [[ -e "${CONFIG_FILE}" ]] && cp -f ${CONFIG_FILE} openwrt/.config
           echo -e "CONFIG_FILE: ${CONFIG_FILE}"
-          [[ -e "${CONFIG_FILE}" ]] && cp -f ${CONFIG_FILE} openwrt/.config
+          [[ -e "${CONFIG_FILE}" ]] && cp -f ${CONFIG_FILE} .config
 
           # 修改 DIY_P2_SH 环境变量指定的脚本文件的权限，使其后面可以执行
           chmod +x ${DIY_P2_SH}
-
-          # 切换到 openwrt 源代码目录
-          cd openwrt/
 
           # 执行 DIY_P2_SH 环境变量指定的脚本 可以进行一些自定义的操作，如修改配置文件、安装额外的软件包等
           ${DIY_P2_SH}
