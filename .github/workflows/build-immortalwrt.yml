@@ -28,14 +28,14 @@ on:
         type: string
 
 env:
-  REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x
+  REPO_URL: https://github.com/grinch27/immortalwrt-mt798x
   REPO_BRANCH: openwrt-21.02
   TZ: America/New_York
   # ETC
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: ${GITHUB_WORKSPACE}/defconfig/${{ inputs.defconfig_config }}.config
-  DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: diy-part2.sh
+  DIY_P1_SH: config/immortalwrt-master/diy-part1.sh
+  DIY_P2_SH: config/immortalwrt-master/diy-part2.sh
 
 jobs:
   build:
