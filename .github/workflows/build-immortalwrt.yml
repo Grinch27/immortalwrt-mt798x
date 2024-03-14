@@ -197,7 +197,7 @@ jobs:
 
       - name: Clone source code
         id: codes
-        working-directory: ${PATH_BUILD}
+        working-directory: ${{ env.PATH_BUILD }}
         if: ${{ steps.init.outputs.status }} == 'success' && !cancelled()
         run: |
           # 当前步骤初始工作目录
@@ -228,7 +228,7 @@ jobs:
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Load custom feeds
-        working-directory: ${PATH_REPO}
+        working-directory: ${{ env.PATH_REPO }}
         run: |
           # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
@@ -243,7 +243,7 @@ jobs:
           ${DIY_P1_SH}
 
       - name: Update feeds
-        working-directory: ${PATH_REPO}
+        working-directory: ${{ env.PATH_REPO }}
         run: |
           # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
@@ -251,7 +251,7 @@ jobs:
           ./scripts/feeds update -a
 
       - name: Install feeds
-        working-directory: ${PATH_REPO}
+        working-directory: ${{ env.PATH_REPO }}
         run: |
           # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
@@ -259,7 +259,7 @@ jobs:
           ./scripts/feeds install -a
 
       - name: Load custom configuration
-        working-directory: ${PATH_REPO}
+        working-directory: ${{ env.PATH_REPO }}
         run: |
           # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
@@ -279,7 +279,7 @@ jobs:
 
       - name: Download package
         id: package
-        working-directory: ${PATH_REPO}
+        working-directory: ${{ env.PATH_REPO }}
         run: |
           # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
@@ -290,7 +290,7 @@ jobs:
 
       - name: Compile the OpenWrt
         id: compile
-        working-directory: ${PATH_REPO}
+        working-directory: ${{ env.PATH_REPO }}
         run: |
           # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
@@ -310,7 +310,7 @@ jobs:
 
       - name: Copy to output
         id: output
-        working-directory: ${PATH_REPO}
+        working-directory: ${{ env.PATH_REPO }}
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
         run: |
           # 当前步骤初始工作目录
@@ -343,7 +343,7 @@ jobs:
         if: ${{ steps.output.outputs.status }} == 'success' && !cancelled()
         with:
           tag: ${{ steps.codes.outputs.build_tag }}
-          artifacts: ${PATH_OUTPUT}/*
+          artifacts: ${{ env.PATH_OUTPUT }}/*
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
