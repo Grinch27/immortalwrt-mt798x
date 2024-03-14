@@ -269,6 +269,11 @@ jobs:
             echo -e "CONFIG_FILE: ${CONFIG_FILE}"
             cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
           fi
+
+          if [[ ! -e "${PATH_REPO}/.config" ]]; then
+            echo ".config file not found, generating default config..."
+            make defconfig
+          fi
           # "files" 目录通常包含一些要添加到固件中的文件, 检查如果存在"files" 目录，则将目录移动到 openwrt/files
           # [[ -e "files" ]] && mv -f files openwrt/files
 
@@ -290,28 +295,48 @@ jobs:
         if: ${{ steps.install.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
-          make defconfig
-          make download -j8
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
+          # make download -j8
+          make download -j$(nproc)
+          # find dl -size -1024c -exec ls -l {} \;
+          # find dl -size -1024c -exec rm -f {} \;
+          find dl -size -1024c -ls -exec rm -f {} \;
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Compile the OpenWrt
-        id: compile
+      # - name: Compile the OpenWrt
+      #   id: compile
+      #   working-directory: ${{ env.PATH_REPO }}
+      #   if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
+      #   run: |
+      #     echo -e "Current working directory: $(pwd)"
+      #     echo -e "$(nproc) thread compile"
+      #     make -j$(($(nproc) + 1)) V=s || make -j1 V=s
+      #     echo "status=success" >> ${GITHUB_OUTPUT}
+
+      - name: Compile the OpenWrt (Multi Threaded)
+        id: compile_multi
         working-directory: ${{ env.PATH_REPO }}
         if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "$(nproc) thread compile"
-          make -j$(($(nproc) + 1)) V=s || make -j1 || make -j1 V=s
-          echo "status=success" >> ${GITHUB_OUTPUT}
+          make -j$(($(nproc) + 1)) V=s && echo "status=success" >> ${GITHUB_OUTPUT}
+
+      - name: Compile the OpenWrt (Single Threaded)
+        id: compile_single
+        working-directory: ${{ env.PATH_REPO }}
+        if: ${{ steps.compile_multi.outputs.status }} != 'success' && !cancelled()
+        run: |
+          echo -e "Current working directory: $(pwd)"
+          echo -e "Single thread compile"
+          make -j1 V=s && echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
         id: copy
         working-directory: /
         env:
           PATH_TARGET: ${{ env.PATH_REPO }}/bin/targets/*/*/*
-        if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
+        # if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
+        if: ( ${{ steps.compile_multi.outputs.status }} == 'success' || ${{ steps.compile_single.outputs.status }} == 'success') && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
           [[ -e "${PATH_OUTPUT}" ]] || mkdir -p ${PATH_OUTPUT}
