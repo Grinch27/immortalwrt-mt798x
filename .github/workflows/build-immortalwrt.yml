@@ -32,7 +32,7 @@ env:
   # Files 文件路径 默认相对于仓库目录路径
   FEEDS_CONF: ./feeds.conf.default
   FILES: ./files
-  CONFIG_FILE: ./config/immortalwrt-master/${{ inputs.defconfig_config }}-raw.config
+  CONFIG_FILE: ./defconfig/${{ inputs.defconfig_config }}.config
   DIY_P1_SH: ./config/immortalwrt-master/diy-part1.sh
   DIY_P2_SH: ./config/immortalwrt-master/diy-part2.sh
 
@@ -224,16 +224,17 @@ jobs:
 
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Load custom feeds to feeds.conf.default
+      - name: (feeds.conf.default) Load custom feeds
         working-directory: ${{ env.PATH_REPO }}
         run: |
           echo -e "Current working directory: $(pwd)"
           if [[ -e "${FEEDS_CONF}" && ! "${FEEDS_CONF}" -ef "${PATH_REPO}/feeds.conf.default" ]]; then
             echo -e "FEEDS_CONF: ${FEEDS_CONF}"
             cp -f ${FEEDS_CONF} ${PATH_REPO}/feeds.conf.default
+            cat ./feeds.conf.default
           fi
 
-      - name: Execute DIY script (before update feeds)
+      - name: (DIY_P1.sh) after load feeds, before update feeds
         working-directory: ${{ env.PATH_REPO }}
         env:
           SCRIPT_FILE: ${{ env.DIY_P1_SH }}
@@ -241,6 +242,7 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           if [[ -e "${SCRIPT_FILE}" ]]; then
             echo -e "SCRIPT_FILE: ${SCRIPT_FILE}"
+            cat ${SCRIPT_FILE}
             chmod +x ${SCRIPT_FILE}
             bash ${SCRIPT_FILE}
           fi
@@ -262,7 +264,7 @@ jobs:
           ./scripts/feeds install -a
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Load custom configuration to .config
+      - name: (.config) Load custom configuration
         id: config
         working-directory: ${{ env.PATH_REPO }}
         run: |
@@ -276,12 +278,16 @@ jobs:
           if [[ -e "${CONFIG_FILE}" && ! "${CONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
             echo -e "CONFIG_FILE: ${CONFIG_FILE}"
             cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
-            echo "status=diy" >> ${GITHUB_OUTPUT}
+            cat ./.config
+            echo "make oldconfig: update .config file..."
+            make oldconfig
           fi
 
+          cat ./.config
           # [[ -e "files" ]] && mv -f files openwrt/files
+          echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Execute DIY script (after install feeds, before download package)
+      - name: (DIY_P2.sh) after install feeds, before download package
         working-directory: ${{ env.PATH_REPO }}
         env:
           SCRIPT_FILE: ${{ env.DIY_P2_SH }}
@@ -289,6 +295,7 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           if [[ -e "${SCRIPT_FILE}" ]]; then
             echo -e "SCRIPT_FILE: ${SCRIPT_FILE}"
+            cat ${SCRIPT_FILE}
             chmod +x ${SCRIPT_FILE}
             bash ${SCRIPT_FILE}
           fi
@@ -297,26 +304,24 @@ jobs:
         id: package
         working-directory: ${{ env.PATH_REPO }}
         env:
-          status_config: ${{ steps.config.outputs.status }}
+          FORCE_UNSAFE_CONFIGURE: 1
         if: ${{ steps.install.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "make download: $(($(nproc) + 1)) thread"
-          export FORCE_UNSAFE_CONFIGURE=1
           make download -j$(($(nproc) + 1))
-          # find dl -size -1024c -exec ls -l {} \;
-          # find dl -size -1024c -exec rm -f {} \;
-          find dl -size -1024c -exec ls -l {} \; -exec rm -f {} \;
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Compile the OpenWrt
         id: compile
         working-directory: ${{ env.PATH_REPO }}
+        env:
+          FORCE_UNSAFE_CONFIGURE: 1
         if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
-          export FORCE_UNSAFE_CONFIGURE=1
-          cat ./.config
           echo -e "$(($(nproc) + 1)) thread compile"
           make -j$(($(nproc) + 1)) V=s || make -j1 V=s
           echo "status=success" >> ${GITHUB_OUTPUT}
