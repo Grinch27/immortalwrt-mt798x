@@ -124,6 +124,7 @@ jobs:
           patch \
           pkgconf \
           python3 \
+          python3-distutils \
           python3-docutils \
           python3-pip \
           python3-ply \
@@ -141,7 +142,7 @@ jobs:
           wget \
           xmlto \
           xxd \
-          zlib1g-dev
+          zlib1g-dev 
           # 重新加载 systemd 的配置
           sudo -E systemctl daemon-reload
           # 删除所有不再需要的软件包及其配置文件
@@ -302,57 +303,53 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "make download: $(nproc + 1) thread"
-          make defconfig
+          # make defconfig
           make download -j$(nproc + 1)
           echo -e "make download: completed"
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
-
-          if [[ -e "${CONFIG_FILE}" && ! "${CONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
-            echo -e "CONFIG_FILE: ${CONFIG_FILE}"
-            cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
-          fi
+          cat ./.config
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      # - name: Compile the OpenWrt
-      #   id: compile
-      #   working-directory: ${{ env.PATH_REPO }}
-      #   if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
-      #   run: |
-      #     echo -e "Current working directory: $(pwd)"
-      #     echo -e "$(nproc) thread compile"
-      #     make -j$(($(nproc) + 1)) V=s || make -j1 V=s
-      #     echo "status=success" >> ${GITHUB_OUTPUT}
-
-      - name: Compile the OpenWrt (Multi Threaded)
-        id: compile_multi
+      - name: Compile the OpenWrt
+        id: compile
         working-directory: ${{ env.PATH_REPO }}
         if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "$(nproc) thread compile"
-          export FORCE_UNSAFE_CONFIGURE=1
-          cat ./.config
-          (make -j$(($(nproc) + 1)) V=s || make -j1 V=s) && echo "status=success" >> ${GITHUB_OUTPUT}
+          make -j$(($(nproc) + 1)) V=s || make -j1 V=s
+          echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Compile the OpenWrt (Single Threaded)
-        id: compile_single
-        working-directory: ${{ env.PATH_REPO }}
-        if: ${{ steps.compile_multi.outputs.status }} != 'success' && !cancelled()
-        run: |
-          echo -e "Current working directory: $(pwd)"
-          echo -e "Single thread compile"
-          export FORCE_UNSAFE_CONFIGURE=1
-          cat ./.config
-          make -j1 V=s && echo "status=success" >> ${GITHUB_OUTPUT}
+      # - name: Compile the OpenWrt (Multi Threaded)
+      #   id: compile_multi
+      #   working-directory: ${{ env.PATH_REPO }}
+      #   if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
+      #   run: |
+      #     echo -e "Current working directory: $(pwd)"
+      #     echo -e "$(nproc) thread compile"
+      #     export FORCE_UNSAFE_CONFIGURE=1
+      #     cat ./.config
+      #     (make -j$(($(nproc) + 1)) V=s || make -j1 V=s) && echo "status=success" >> ${GITHUB_OUTPUT}
+
+      # - name: Compile the OpenWrt (Single Threaded)
+      #   id: compile_single
+      #   working-directory: ${{ env.PATH_REPO }}
+      #   if: ${{ steps.compile_multi.outputs.status }} != 'success' && !cancelled()
+      #   run: |
+      #     echo -e "Current working directory: $(pwd)"
+      #     echo -e "Single thread compile"
+      #     export FORCE_UNSAFE_CONFIGURE=1
+      #     cat ./.config
+      #     make -j1 V=s && echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
         id: copy
         working-directory: /
         env:
           PATH_TARGET: ${{ env.PATH_REPO }}/bin/targets/*/*/*
-        # if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
-        if: ( ${{ steps.compile_multi.outputs.status }} == 'success' || ${{ steps.compile_single.outputs.status }} == 'success') && !cancelled()
+        if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
+        # if: ( ${{ steps.compile_multi.outputs.status }} == 'success' || ${{ steps.compile_single.outputs.status }} == 'success') && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
           [[ -e "${PATH_OUTPUT}" ]] || mkdir -p ${PATH_OUTPUT}
