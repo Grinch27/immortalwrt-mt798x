@@ -262,12 +262,14 @@ jobs:
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Load custom configuration to .config
+        id: config
         working-directory: ${{ env.PATH_REPO }}
         run: |
           echo -e "Current working directory: $(pwd)"
           if [[ -e "${CONFIG_FILE}" && ! "${CONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
             echo -e "CONFIG_FILE: ${CONFIG_FILE}"
             cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
+            echo "status=diy" >> ${GITHUB_OUTPUT}
           fi
 
           if [[ ! -e "${PATH_REPO}/.config" ]]; then
@@ -292,14 +294,18 @@ jobs:
       - name: Download package
         id: package
         working-directory: ${{ env.PATH_REPO }}
+        env:
+          status_config: ${{ steps.config.outputs.status }}
         if: ${{ steps.install.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
-          echo -e "make download: $(nproc) thread"
-          make download -j$(nproc)
-          echo -e "make download: completed"
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
+          if [[ ${status_config} != diy ]]; then
+            echo -e "make download: $(nproc) thread"
+            make download -j$(nproc)
+            echo -e "make download: completed"
+            find dl -size -1024c -exec ls -l {} \;
+            find dl -size -1024c -exec rm -f {} \;
+          fi
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       # - name: Compile the OpenWrt
@@ -319,7 +325,7 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "$(nproc) thread compile"
-          make -j$(($(nproc) + 1)) V=s && echo "status=success" >> ${GITHUB_OUTPUT}
+          make -j$(nproc) V=s && echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Compile the OpenWrt (Single Threaded)
         id: compile_single
