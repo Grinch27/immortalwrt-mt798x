@@ -275,7 +275,6 @@ jobs:
           if [[ -e "${CONFIG_FILE}" && ! "${CONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
             echo -e "CONFIG_FILE: ${CONFIG_FILE}"
             cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
-            cat ./.config
             echo "status=diy" >> ${GITHUB_OUTPUT}
           fi
 
@@ -328,7 +327,9 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "$(nproc) thread compile"
-          make -j$(nproc) V=s && echo "status=success" >> ${GITHUB_OUTPUT}
+          export FORCE_UNSAFE_CONFIGURE=1
+          cat ./.config
+          make -j$(($(nproc) + 1)) V=s && echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Compile the OpenWrt (Single Threaded)
         id: compile_single
@@ -337,6 +338,8 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "Single thread compile"
+          export FORCE_UNSAFE_CONFIGURE=1
+          cat ./.config
           make -j1 V=s && echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
