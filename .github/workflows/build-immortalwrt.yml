@@ -1,8 +1,3 @@
-#============================================================================================
-# https://github.com/ophub/amlogic-s9xxx-openwrt
-# Description: Build OpenWrt
-#============================================================================================
-
 name: Build Immortalwrt
 
 on:
@@ -43,6 +38,7 @@ env:
 
 jobs:
   build:
+    name: Build Immortalwrt
     runs-on: ubuntu-22.04
     if: ${{ github.event.repository.owner.id }} == ${{ github.event.sender.id }}
 
@@ -54,6 +50,7 @@ jobs:
         id: init
         env:
           DEBIAN_FRONTEND: noninteractive
+        working-directory: /
         run: |
           docker rmi $(docker images -q) 2>/dev/null
           # 如果环境变量 AGENT_TOOLSDIRECTORY 不为空，则删除该目录及其所有内容
@@ -157,11 +154,17 @@ jobs:
           sudo rm -rf ~/{.cargo,.dotnet,.rustup}
           # 设置系统的时区为环境变量 TZ 指定的值
           sudo timedatectl set-timezone "${TZ}"
-          # 将 "status=success" 写入环境变量 GITHUB_OUTPUT 指定的文件
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Create simulated physical disk
+        id: disk
+        working-directory: /
+        if: ${{ steps.init.outputs.status }} == 'success' && !cancelled()
         run: |
+          # sudo dd if=/dev/zero of=/tmp/disk.img bs=1M count=1024
+          # sudo mkfs.ext2 /tmp/disk.img
+          # sudo mkdir /mnt/disk
+          # sudo mount -o loop /tmp/disk.img /mnt/disk
           # 计算 /mnt 分区的可用空间（减去 1GB 作为缓冲）
           mnt_size=$(expr $(df -h /mnt | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 1)
           # 计算根分区的可用空间（减去 4GB 作为缓冲）
@@ -190,19 +193,14 @@ jobs:
           sudo chown -R runner.runner ${PATH_BUILD}
           # 显示所有文件系统的磁盘空间使用情况
           df -Th
-          # sudo dd if=/dev/zero of=/tmp/disk.img bs=1M count=1024
-          # sudo mkfs.ext2 /tmp/disk.img
-          # sudo mkdir /mnt/disk
-          # sudo mount -o loop /tmp/disk.img /mnt/disk
+          echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Clone source code
         id: codes
         working-directory: ${{ env.PATH_BUILD }}
-        if: ${{ steps.init.outputs.status }} == 'success' && !cancelled()
+        if: ${{ steps.disk.outputs.status }} == 'success' && !cancelled()
         run: |
-          # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
-
           # Clone source code 克隆 ${REPO_URL} 仓库到 PATH_REPO 绝对路径
           # --quiet 静默模式不输出任何信息 --single-branch 只克隆指定的分支 --depth=1 只克隆最近的一次提交 --branch=${REPO_BRANCH} 要克隆的分支
           git clone --quiet --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} ${PATH_REPO}
@@ -210,143 +208,133 @@ jobs:
           # 符号链接，通过目标 ${GITHUB_WORKSPACE}/${DIR_REPO} 访问到源完整路径 ${PATH_REPO}
           # ln -sf ${PATH_REPO} ${GITHUB_WORKSPACE}/${DIR_REPO}
 
-          # Set output information 将构建标签和日期信息写入到 GITHUB_OUTPUT 环境变量指定的文件中
-          # echo "build_tag=OpenWrt_${TAGS_NAME}_${{ inputs.openwrt_storage }}_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
-          echo "build_tag=Immortalwrt_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
-
           # 打印仓库 URL、分支和标签名称
-          echo -e "REPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]\nTAGS_NAME: [ ${TAGS_NAME} ]"
+          # echo -e "REPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]\nTAGS_NAME: [ ${TAGS_NAME} ]"
 
           # 显示当前工作目录的磁盘空间使用情况
           df -hT ${PWD}
 
           # 将仓库 URL 写入到 GITHUB_OUTPUT 环境变量指定的文件中
-          echo "REPO_URL=${REPO_URL}" >> ${GITHUB_OUTPUT}
+          # echo "REPO_URL=${REPO_URL}" >> ${GITHUB_OUTPUT}
           # echo "TAGS_NAME=${TAGS_NAME}" >> ${GITHUB_OUTPUT}
+          # Set output information 将构建标签和日期信息写入到 GITHUB_OUTPUT 环境变量指定的文件中
+          # echo "build_tag=OpenWrt_${TAGS_NAME}_${{ inputs.openwrt_storage }}_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
+          echo "build_tag=Immortalwrt_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
 
-          # 将 "status=success" 写入到 GITHUB_OUTPUT 环境变量指定的文件中
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Load custom feeds
+      - name: Load custom feeds to feeds.conf.default
         working-directory: ${{ env.PATH_REPO }}
         run: |
-          # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
-
-          # 检查 FEEDS_CONF 环境变量指定的文件是否存在且不是同一个文件 如果存在，则将这个文件复制到 当前工作目录/feeds.conf.default 用于指定 feeds 的源
-          if [[ -f "${FEEDS_CONF}" && "${FEEDS_CONF}" != "./feeds.conf.default" ]]; then
+          if [[ -e "${FEEDS_CONF}" && ! "${FEEDS_CONF}" -ef "${PATH_REPO}/feeds.conf.default" ]]; then
             echo -e "FEEDS_CONF: ${FEEDS_CONF}"
-            cp -f ${FEEDS_CONF} ./feeds.conf.default
+            cp -f ${FEEDS_CONF} ${PATH_REPO}/feeds.conf.default
           fi
 
-          # 修改 DIY_P1_SH 环境变量指定的文件的权限，使其可以执行
-          chmod +x ${DIY_P1_SH}
-
-          # 执行 DIY_P1_SH 环境变量指定的脚本进行一些自定义的操作，如修改配置文件、安装额外的软件包等
-          ${DIY_P1_SH}
+      - name: Execute DIY script (before update feeds)
+        working-directory: ${{ env.PATH_REPO }}
+        env:
+          SCRIPT_FILE: ${{ env.DIY_P1_SH }}
+        run: |
+          echo -e "Current working directory: $(pwd)"
+          if [[ -e "${SCRIPT_FILE}" ]]; then
+            echo -e "SCRIPT_FILE: ${SCRIPT_FILE}"
+            chmod +x ${SCRIPT_FILE}
+            bash ${SCRIPT_FILE}
+          fi
 
       - name: Update feeds
+        id: update
         working-directory: ${{ env.PATH_REPO }}
         run: |
-          # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
-          # 更新 feeds
           ./scripts/feeds update -a
+          echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Install feeds
+        id: install
         working-directory: ${{ env.PATH_REPO }}
+        if: ${{ steps.update.outputs.status }} == 'success' && !cancelled()
         run: |
-          # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
-          # 安装 feeds
           ./scripts/feeds install -a
+          echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Load custom configuration
+      - name: Load custom configuration to .config
         working-directory: ${{ env.PATH_REPO }}
         run: |
-          # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
-
+          if [[ -e "${CONFIG_FILE}" && ! "${CONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
+            echo -e "CONFIG_FILE: ${CONFIG_FILE}"
+            cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
+          fi
           # "files" 目录通常包含一些要添加到固件中的文件, 检查如果存在"files" 目录，则将目录移动到 openwrt/files
           # [[ -e "files" ]] && mv -f files openwrt/files
 
-          # CONFIG_FILE 环境变量指定的文件通常是 OpenWrt 的配置文件，包含了要编译的软件包、目标系统、硬件配置等信息。检查如果存在，则将这个文件复制到 openwrt/.config
-          # cp -f $GITHUB_WORKSPACE/.config $GITHUB_WORKSPACE/${DIR_REPO}/
-          # [[ -e "${CONFIG_FILE}" ]] && echo -e "CONFIG_FILE: ${CONFIG_FILE}" && cp -f ${CONFIG_FILE} ./.config
-          # CONFIG_FILE 环境变量指定的文件通常是 OpenWrt 的配置文件，包含了要编译的软件包、目标系统、硬件配置等信息。检查如果存在且不是同一个文件，则将这个文件复制到 ./.config
-          if [[ -e "${CONFIG_FILE}" && "${CONFIG_FILE}" != "./.config" ]]; then
-            echo -e "CONFIG_FILE: ${CONFIG_FILE}"
-            cp -f ${CONFIG_FILE} ./.config
+      - name: Execute DIY script (after install feeds, before download package)
+        working-directory: ${{ env.PATH_REPO }}
+        env:
+          SCRIPT_FILE: ${{ env.DIY_P2_SH }}
+        run: |
+          echo -e "Current working directory: $(pwd)"
+          if [[ -e "${SCRIPT_FILE}" ]]; then
+            echo -e "SCRIPT_FILE: ${SCRIPT_FILE}"
+            chmod +x ${SCRIPT_FILE}
+            bash ${SCRIPT_FILE}
           fi
-
-          # 修改 DIY_P2_SH 环境变量指定的脚本文件的权限，使其后面可以执行
-          chmod +x ${DIY_P2_SH}
-
-          # 执行 DIY_P2_SH 环境变量指定的脚本 可以进行一些自定义的操作，如修改配置文件、安装额外的软件包等
-          ${DIY_P2_SH}
 
       - name: Download package
         id: package
         working-directory: ${{ env.PATH_REPO }}
+        if: ${{ steps.install.outputs.status }} == 'success' && !cancelled()
         run: |
-          # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
           make defconfig
           make download -j8
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
+          echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Compile the OpenWrt
         id: compile
         working-directory: ${{ env.PATH_REPO }}
+        if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
         run: |
-          # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
-
-          # 打印出当前系统的 CPU 核心数，并表示将使用这些核心进行编译
           echo -e "$(nproc) thread compile"
-
-          # 使用 make 命令编译 OpenWrt
-          # -j$(($(nproc) + 1)) 选项表示并行编译，使用的线程数为 CPU 核心数加 1
-          # V=s 选项表示详细模式，会输出详细的编译信息
-          # 如果编译失败，则尝试使用单线程编译
-          # 如果再次失败，则尝试使用单线程的详细模式编译
           make -j$(($(nproc) + 1)) V=s || make -j1 || make -j1 V=s
-
-          # 将 "status=success" 写入到 GITHUB_OUTPUT 环境变量指定的文件中 表示编译成功
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
-        id: output
-        working-directory: ${{ env.PATH_REPO }}
+        id: copy
+        working-directory: /
+        env:
+          PATH_TARGET: ${{ env.PATH_REPO }}/bin/targets/*/*/*
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
         run: |
-          # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
+          [[ -e "${PATH_OUTPUT}" ]] || mkdir -p ${PATH_OUTPUT}
+          cp -rf ${PATH_TARGET} ${PATH_OUTPUT}/
+          cp -f ${PATH_REPO}/.config ${PATH_OUTPUT}/config
+          echo "status=success" >> ${GITHUB_OUTPUT}
 
-          # 检查 "output" 目录是否存在，不存在则创建
-          [[ -e "output" ]] || mkdir output
-
-          # 将所有的文件复制到 output 目录
-          cp -rf ./bin/targets/*/*/* ${PATH_OUTPUT}/
-
-          # 将 .config 配置文件复制到 output 目录为config
-          cp -f ./.config ${PATH_OUTPUT}/config
-
-          # 切换到 output 目录，进行上传文件前的准备
-          cd ${PATH_OUTPUT}/
-
-          # 清理 package 文件夹
+      - name: Setup output
+        id: output
+        working-directory: ${{ env.PATH_OUTPUT }}
+        if: ${{ steps.copy.outputs.status }} == 'success' && !cancelled()
+        run: |
           rm -rf packages
-
-          # 对 output 目录中的每个 .bin 文件，生成一个包含其 sha256sum 的文件
-          for file in *.bin; do [[ ! -d "${file}" ]] && sha256sum "${file}" >"${file}.sha"; done
-
-          # 将 "status=success" 写入到 GITHUB_OUTPUT 环境变量指定的文件中 表示步骤成功完成
+          for file in *.bin
+          do
+            if [[ ! -d "${file}" ]]
+            then
+              sha256sum "${file}" >"${file}.sha"
+            fi
+          done
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Upload OpenWrt to Release
-        id: release
         uses: ncipollo/release-action@main
         if: ${{ steps.output.outputs.status }} == 'success' && !cancelled()
         with:
@@ -359,18 +347,12 @@ jobs:
           body: |
             # 未经测试
 
-      - name: Clear server space
+      - name: Clear workspace
         id: clean
-        working-directory: /
-        # if: ${{ steps.output.outputs.status }} == 'success' && !cancelled()
+        working-directory: ${{ env.PATH_REPO }}
         run: |
-          # 清理服务器空间，删除output目录以外的所有文件和目录 
           # rm -rf $(ls . | grep -v "^output$" | xargs) 2>/dev/null
-          # 清理服务器空间，删除所有文件和目录 
-          rm -rf ./*
-
+          rm -rf ./* 2>/dev/null
           # 显示当前工作目录的磁盘空间使用情况
           df -hT ${PWD}
-
-          # 将 "status=success" 写入到 GITHUB_OUTPUT 环境变量指定的文件中 表示步骤成功完成
           echo "status=success" >> ${GITHUB_OUTPUT}
