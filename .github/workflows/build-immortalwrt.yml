@@ -266,16 +266,19 @@ jobs:
         working-directory: ${{ env.PATH_REPO }}
         run: |
           echo -e "Current working directory: $(pwd)"
-          if [[ -e "${CONFIG_FILE}" && ! "${CONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
-            echo -e "CONFIG_FILE: ${CONFIG_FILE}"
-            cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
-            echo "status=diy" >> ${GITHUB_OUTPUT}
-          fi
 
           if [[ ! -e "${PATH_REPO}/.config" ]]; then
             echo ".config file not found, generating default config..."
             make defconfig
           fi
+
+          if [[ -e "${CONFIG_FILE}" && ! "${CONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
+            echo -e "CONFIG_FILE: ${CONFIG_FILE}"
+            cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
+            cat ./.config
+            echo "status=diy" >> ${GITHUB_OUTPUT}
+          fi
+
           # "files" 目录通常包含一些要添加到固件中的文件, 检查如果存在"files" 目录，则将目录移动到 openwrt/files
           # [[ -e "files" ]] && mv -f files openwrt/files
 
