@@ -269,7 +269,12 @@ jobs:
 
           # CONFIG_FILE 环境变量指定的文件通常是 OpenWrt 的配置文件，包含了要编译的软件包、目标系统、硬件配置等信息。检查如果存在，则将这个文件复制到 openwrt/.config
           # cp -f $GITHUB_WORKSPACE/.config $GITHUB_WORKSPACE/${DIR_REPO}/
-          [[ -e "${CONFIG_FILE}" ]] && echo -e "CONFIG_FILE: ${CONFIG_FILE}" && cp -f ${CONFIG_FILE} ./.config
+          # [[ -e "${CONFIG_FILE}" ]] && echo -e "CONFIG_FILE: ${CONFIG_FILE}" && cp -f ${CONFIG_FILE} ./.config
+          # CONFIG_FILE 环境变量指定的文件通常是 OpenWrt 的配置文件，包含了要编译的软件包、目标系统、硬件配置等信息。检查如果存在且不是同一个文件，则将这个文件复制到 ./.config
+          if [[ -e "${CONFIG_FILE}" && "${CONFIG_FILE}" != "./.config" ]]; then
+            echo -e "CONFIG_FILE: ${CONFIG_FILE}"
+            cp -f ${CONFIG_FILE} ./.config
+          fi
 
           # 修改 DIY_P2_SH 环境变量指定的脚本文件的权限，使其后面可以执行
           chmod +x ${DIY_P2_SH}
