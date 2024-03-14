@@ -32,7 +32,7 @@ env:
   # Files 文件路径 默认相对于仓库目录路径
   FEEDS_CONF: ./feeds.conf.default
   FILES: ./files
-  CONFIG_FILE: ./defconfig/${{ inputs.defconfig_config }}.config
+  CONFIG_FILE: ./config/immortalwrt-master/${{ inputs.defconfig_config }}-raw.config
   DIY_P1_SH: ./config/immortalwrt-master/diy-part1.sh
   DIY_P2_SH: ./config/immortalwrt-master/diy-part2.sh
 
@@ -279,7 +279,6 @@ jobs:
             echo "status=diy" >> ${GITHUB_OUTPUT}
           fi
 
-          # "files" 目录通常包含一些要添加到固件中的文件, 检查如果存在"files" 目录，则将目录移动到 openwrt/files
           # [[ -e "files" ]] && mv -f files openwrt/files
 
       - name: Execute DIY script (after install feeds, before download package)
@@ -304,13 +303,10 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           echo -e "make download: $(($(nproc) + 1)) thread"
           export FORCE_UNSAFE_CONFIGURE=1
-          cat ./.config
-
           make download -j$(($(nproc) + 1))
-          echo -e "make download: completed"
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
-
+          # find dl -size -1024c -exec ls -l {} \;
+          # find dl -size -1024c -exec rm -f {} \;
+          find dl -size -1024c -exec ls -l {} \; -exec rm -f {} \;
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Compile the OpenWrt
@@ -319,32 +315,11 @@ jobs:
         if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
-          echo -e "$(nproc) thread compile"
           export FORCE_UNSAFE_CONFIGURE=1
+          cat ./.config
+          echo -e "$(($(nproc) + 1)) thread compile"
           make -j$(($(nproc) + 1)) V=s || make -j1 V=s
           echo "status=success" >> ${GITHUB_OUTPUT}
-
-      # - name: Compile the OpenWrt (Multi Threaded)
-      #   id: compile_multi
-      #   working-directory: ${{ env.PATH_REPO }}
-      #   if: ${{ steps.package.outputs.status }} == 'success' && !cancelled()
-      #   run: |
-      #     echo -e "Current working directory: $(pwd)"
-      #     echo -e "$(nproc) thread compile"
-      #     export FORCE_UNSAFE_CONFIGURE=1
-      #     cat ./.config
-      #     (make -j$(($(nproc) + 1)) V=s || make -j1 V=s) && echo "status=success" >> ${GITHUB_OUTPUT}
-
-      # - name: Compile the OpenWrt (Single Threaded)
-      #   id: compile_single
-      #   working-directory: ${{ env.PATH_REPO }}
-      #   if: ${{ steps.compile_multi.outputs.status }} != 'success' && !cancelled()
-      #   run: |
-      #     echo -e "Current working directory: $(pwd)"
-      #     echo -e "Single thread compile"
-      #     export FORCE_UNSAFE_CONFIGURE=1
-      #     cat ./.config
-      #     make -j1 V=s && echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
         id: copy
@@ -352,7 +327,6 @@ jobs:
         env:
           PATH_TARGET: ${{ env.PATH_REPO }}/bin/targets/*/*/*
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
-        # if: ( ${{ steps.compile_multi.outputs.status }} == 'success' || ${{ steps.compile_single.outputs.status }} == 'success') && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
           [[ -e "${PATH_OUTPUT}" ]] || mkdir -p ${PATH_OUTPUT}
