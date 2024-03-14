@@ -303,6 +303,7 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "make download: $(nproc + 1) thread"
+          export FORCE_UNSAFE_CONFIGURE=1
           # make defconfig
           make download -j$(nproc + 1)
           echo -e "make download: completed"
@@ -318,6 +319,7 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "$(nproc) thread compile"
+          export FORCE_UNSAFE_CONFIGURE=1
           make -j$(($(nproc) + 1)) V=s || make -j1 V=s
           echo "status=success" >> ${GITHUB_OUTPUT}
 
