@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
 
       - name: Initialization environment
         id: init
@@ -233,8 +233,11 @@ jobs:
           # 当前步骤初始工作目录
           echo -e "Current working directory: $(pwd)"
 
-          # 检查 FEEDS_CONF 环境变量指定的文件是否存在 如果存在，则将这个文件复制到 当前工作目录/feeds.conf.default 用于指定 feeds 的源
-          [[ -f "${FEEDS_CONF}" ]] && cp -f ${FEEDS_CONF} ./feeds.conf.default
+          # 检查 FEEDS_CONF 环境变量指定的文件是否存在且不是同一个文件 如果存在，则将这个文件复制到 当前工作目录/feeds.conf.default 用于指定 feeds 的源
+          if [[ -f "${FEEDS_CONF}" && "${FEEDS_CONF}" != "./feeds.conf.default" ]]; then
+            echo -e "FEEDS_CONF: ${FEEDS_CONF}"
+            cp -f ${FEEDS_CONF} ./feeds.conf.default
+          fi
 
           # 修改 DIY_P1_SH 环境变量指定的文件的权限，使其可以执行
           chmod +x ${DIY_P1_SH}
