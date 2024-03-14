@@ -302,14 +302,15 @@ jobs:
         if: ${{ steps.install.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
-          echo -e "make download: $(nproc + 1) thread"
+          echo -e "make download: $(($(nproc) + 1)) thread"
           export FORCE_UNSAFE_CONFIGURE=1
-          # make defconfig
-          make download -j$(nproc + 1)
+          cat ./.config
+
+          make download -j$(($(nproc) + 1))
           echo -e "make download: completed"
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
-          cat ./.config
+
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Compile the OpenWrt
