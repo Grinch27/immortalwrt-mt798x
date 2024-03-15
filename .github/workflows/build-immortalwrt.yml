@@ -329,7 +329,10 @@ jobs:
         id: output
         working-directory: ${{ env.PATH_OUTPUT }}
         env:
-          FILE_CONFIG: ./config
+          FILE_CONFIG: config
+          FILE_RELEASE: release.md
+          config_branch: ${{ inputs.defconfig_config }}
+          builder_name: ${{ inputs.builder_name }}
         if: ${{ steps.copy.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
@@ -347,15 +350,16 @@ jobs:
           # 将仓库 URL 写入到 GITHUB_OUTPUT 环境变量指定的文件中
           # echo "TAGS_NAME=${TAGS_NAME}" >> ${GITHUB_OUTPUT}
           # Set output information 将构建标签和日期信息写入到 GITHUB_OUTPUT 环境变量指定的文件中
-          # echo "build_tag=OpenWrt_${TAGS_NAME}_${{ inputs.openwrt_storage }}_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
           # echo "build_tag=$(date +"%y%mw%V")_Immortalwrt" >> ${GITHUB_OUTPUT}
           # 获取当前的时间戳并写入到输出文件
           echo "timestamp=$(date +"%y%mw%V")" >> ${GITHUB_OUTPUT}
 
-          # 读取config文件中所有含有=的行 拼接成一起 输出
-          if [[ -f ${FILE_CONFIG} ]]; then
-            config=$(grep '=' ${FILE_CONFIG} | sed 's/ /\\\n/g' | sed 's/=//g')
-            echo "config=${config}" >> "${GITHUB_OUTPUT}"
+          # 在当前目录 读取config文件中所有含有=的行 拼接成一起 输出到release.md
+          if [[ -f ./${FILE_CONFIG} ]]; then
+            config=$(grep '=' ./${FILE_CONFIG} | sed 's/ /\\\n/g')
+            echo -e "# Build ${config_branch} - by ${builder_name}\n\n未经测试\n\n## config setting\n\n" > ./${FILE_RELEASE}
+            echo "${config}" >> ./${FILE_RELEASE}
+            echo "release=${FILE_RELEASE}" >> ${GITHUB_OUTPUT}
           fi
 
           echo "status=success" >> ${GITHUB_OUTPUT}
@@ -365,26 +369,18 @@ jobs:
         if: ${{ steps.output.outputs.status }} == 'success' && !cancelled()
         env:
           config_branch: ${{ inputs.defconfig_config }}
-          config_setting: ${{ steps.output.outputs.config }}
           timestamp: ${{ steps.output.outputs.timestamp }}
-          builder_name: ${{ inputs.builder_name }}
+          file_release: ${{ steps.output.outputs.release }}
         with:
           # https://github.com/ncipollo/release-action/blob/main/README.zh-Hans.md
           name: "${{ env.timestamp }} ${{ env.config_branch }}"
           tag: "${{ env.config_branch }}"
-          artifacts: ${{ env.PATH_OUTPUT }}/*
+          artifacts: "${{ env.PATH_OUTPUT }}/*"
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-          body: |
-            # Build ${{ env.config_branch }} - by ${{ env.builder_name }}
-
-            未经测试
-
-            ## config setting
-
-            ${{ env.config_setting }}
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          bodyFile: "${{ env.PATH_OUTPUT }}/${{ env.file_release }}"
 
       - name: Clear workspace
         id: clean
