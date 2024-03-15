@@ -17,7 +17,7 @@ on:
           - mt7986-ax6000
           - mt7986-ax6000-256m
       builder_name:
-        description: "Set OpenWrt builder signature."
+        description: "[output] Set OpenWrt builder signature."
         required: false
         default: "grinch27"
         type: string
@@ -36,6 +36,8 @@ env:
   CONFIG_FILE: ./defconfig/${{ inputs.defconfig_config }}.config
   DIY_P1_SH: ./config/immortalwrt-master/diy-part1.sh
   DIY_P2_SH: ./config/immortalwrt-master/diy-part2.sh
+  # release 说明文件
+  RELEASE_MD: /builder/openwrt/release.md
 
 jobs:
   build:
@@ -186,27 +188,31 @@ jobs:
           sudo mount /dev/github/runner ${PATH_BUILD}
           sudo chown -R runner.runner ${PATH_BUILD}
 
-          # 显示所有文件系统的磁盘空间使用情况
           df -Th
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Clone source code
         id: codes
         working-directory: ${{ env.PATH_BUILD }}
+        env:
+          config_branch: ${{ inputs.defconfig_config }}
+          builder_name: ${{ inputs.builder_name }}
         if: ${{ steps.disk.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
 
-          echo -e "REPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]"
           # --quiet 静默模式不输出任何信息 --single-branch 只克隆指定的分支 --depth=1 只克隆最近的一次提交 --branch=${REPO_BRANCH} 要克隆的分支
           git clone --quiet --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} ${PATH_REPO}
+          echo -e "REPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]"
 
           # 符号链接，通过目标 ${GITHUB_WORKSPACE}/${DIR_REPO} 访问到源完整路径 ${PATH_REPO}
           # ln -sf ${PATH_REPO} ${GITHUB_WORKSPACE}/${DIR_REPO}
 
-          # 显示当前工作目录的磁盘空间使用情况
-          df -hT ${PWD}
+          echo -e "# Build ${config_branch} - by ${builder_name}" >> ${RELEASE_MD}
+          echo -e "\n### Source Code" >> ${RELEASE_MD}
+          echo -e "\n- [${REPO_BRANCH}](${REPO_URL})" >> ${RELEASE_MD}
 
+          df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: (feeds.conf.default) Load custom feeds
@@ -217,7 +223,6 @@ jobs:
             echo -e "FEEDS_CONF: ${FEEDS_CONF}"
             cp -f ${FEEDS_CONF} ${PATH_REPO}/feeds.conf.default
           fi
-          cat ./feeds.conf.default
 
       - name: (DIY_P1.sh) after load feeds, before update feeds
         working-directory: ${{ env.PATH_REPO }}
@@ -227,9 +232,18 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           if [[ -e "${SCRIPT_FILE}" ]]; then
             echo -e "SCRIPT_FILE: ${SCRIPT_FILE}"
-            cat ${SCRIPT_FILE}
             chmod +x ${SCRIPT_FILE}
             bash ${SCRIPT_FILE}
+
+            cat ${SCRIPT_FILE}
+            # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
+            code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
+            # 折叠使用bash代码块 高亮代码
+            echo -e "\n### ${SCRIPT_FILE}" >> ${RELEASE_MD}
+            echo -e "\n<details>\n<summary>Bash</summary>" >> ${RELEASE_MD}
+            echo -e "\n```bash\n${code_script}\n```" >> ${RELEASE_MD}
+            echo -e "\n</details>" >> ${RELEASE_MD}
+
           fi
 
       - name: Update feeds
@@ -237,6 +251,16 @@ jobs:
         working-directory: ${{ env.PATH_REPO }}
         run: |
           echo -e "Current working directory: $(pwd)"
+
+          cat ./feeds.conf.default
+          # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
+          code_feeds=$(grep '^[^#]' ./feeds.conf.default | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
+          # 折叠使用bash代码块 高亮代码
+          echo -e "\n### feeds setting" >> ${RELEASE_MD}
+          echo -e "\n<details>\n<summary>feeds.conf.default</summary>" >> ${RELEASE_MD}
+          echo -e "\n```bash\n${code_feeds}\n```" >> ${RELEASE_MD}
+          echo -e "\n</details>" >> ${RELEASE_MD}
+
           ./scripts/feeds update -a
           echo "status=success" >> ${GITHUB_OUTPUT}
 
@@ -280,9 +304,17 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           if [[ -e "${SCRIPT_FILE}" ]]; then
             echo -e "SCRIPT_FILE: ${SCRIPT_FILE}"
-            cat ${SCRIPT_FILE}
             chmod +x ${SCRIPT_FILE}
             bash ${SCRIPT_FILE}
+
+            cat ${SCRIPT_FILE}
+            # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
+            code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
+            # 折叠使用bash代码块 高亮代码
+            echo -e "\n### ${SCRIPT_FILE}" >> ${RELEASE_MD}
+            echo -e "\n<details>\n<summary>Bash</summary>" >> ${RELEASE_MD}
+            echo -e "\n```bash\n${code_script}\n```" >> ${RELEASE_MD}
+            echo -e "\n</details>" >> ${RELEASE_MD}
           fi
 
       - name: Download package
@@ -310,6 +342,8 @@ jobs:
           echo -e "$(($(nproc) + 1)) thread compile"
           make -j$(($(nproc) + 1)) V=s
           # || make -j1 V=s
+          echo -e "\n### Compile finished Time" >> ${RELEASE_MD}
+          echo -e "\n- [x]$(date +"%Y-%m-%d %H:%M:%S %z")" >> ${RELEASE_MD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
@@ -329,37 +363,39 @@ jobs:
         id: output
         working-directory: ${{ env.PATH_OUTPUT }}
         env:
-          FILE_CONFIG: config
-          FILE_RELEASE: release.md
-          config_branch: ${{ inputs.defconfig_config }}
-          builder_name: ${{ inputs.builder_name }}
+          file_config: ./config
         if: ${{ steps.copy.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
 
           rm -rf packages
 
+          echo -e "\n### Tested or NOT\n\n" >> ${RELEASE_MD}
+
           for file in *.bin
           do
             if [[ ! -d "${file}" ]]
             then
-              sha256sum "${file}" >"${file}.sha"
+              sha256sum "${file}" > "${file}.sha"
+              echo -e "- [ ] ${file}" >> ${RELEASE_MD}
             fi
           done
 
           # 将仓库 URL 写入到 GITHUB_OUTPUT 环境变量指定的文件中
           # echo "TAGS_NAME=${TAGS_NAME}" >> ${GITHUB_OUTPUT}
           # Set output information 将构建标签和日期信息写入到 GITHUB_OUTPUT 环境变量指定的文件中
-          # echo "build_tag=$(date +"%y%mw%V")_Immortalwrt" >> ${GITHUB_OUTPUT}
-          # 获取当前的时间戳并写入到输出文件
-          echo "timestamp=$(date +"%y%mw%V")" >> ${GITHUB_OUTPUT}
+          # 获取当前的时间戳
+          echo -e "timestamp=$(date +"%y%mw%V")" >> ${GITHUB_OUTPUT}
 
           # 在当前目录 读取config文件中所有含有=的行 拼接成一起 输出到release.md
-          if [[ -f ./${FILE_CONFIG} ]]; then
-            config=$(grep '=' ./${FILE_CONFIG} | sed 's/ /\\\n/g')
-            echo -e "# Build ${config_branch} - by ${builder_name}\n\n未经测试\n\n## config setting\n\n" > ./${FILE_RELEASE}
-            echo "${config}" >> ./${FILE_RELEASE}
-            echo "release=${FILE_RELEASE}" >> ${GITHUB_OUTPUT}
+          if [[ -f ${file_config} ]]; then
+            # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
+            config=$(grep '^[^#]' ${file_config} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
+            # 折叠使用makefile代码块 高亮config设置
+            echo -e "\n### config setting" >> ${RELEASE_MD}
+            echo -e "\n<details>\n<summary>.config</summary>" >> ${RELEASE_MD}
+            echo -e "\n```makefile\n${config}\n```" >> ${RELEASE_MD}
+            echo -e "\n</details>" >> ${RELEASE_MD}
           fi
 
           echo "status=success" >> ${GITHUB_OUTPUT}
@@ -370,7 +406,6 @@ jobs:
         env:
           config_branch: ${{ inputs.defconfig_config }}
           timestamp: ${{ steps.output.outputs.timestamp }}
-          file_release: ${{ steps.output.outputs.release }}
         with:
           # https://github.com/ncipollo/release-action/blob/main/README.zh-Hans.md
           name: "${{ env.timestamp }} ${{ env.config_branch }}"
@@ -380,7 +415,7 @@ jobs:
           removeArtifacts: false
           replacesArtifacts: true
           token: "${{ secrets.GITHUB_TOKEN }}"
-          bodyFile: "${{ env.PATH_OUTPUT }}/${{ env.file_release }}"
+          bodyFile: "${{ env.PATH_OUTPUT }}/${{ env.RELEASE_MD }}"
 
       - name: Clear workspace
         id: clean
