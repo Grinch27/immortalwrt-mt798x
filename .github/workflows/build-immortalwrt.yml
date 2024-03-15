@@ -208,6 +208,7 @@ jobs:
           # 符号链接，通过目标 ${GITHUB_WORKSPACE}/${DIR_REPO} 访问到源完整路径 ${PATH_REPO}
           # ln -sf ${PATH_REPO} ${GITHUB_WORKSPACE}/${DIR_REPO}
 
+          # 记录到 release.md
           echo -e "# Build ${config_branch} - by ${builder_name}" >> ${RELEASE_MD}
           echo -e "\n### Source Code" >> ${RELEASE_MD}
           echo -e "\n- [${REPO_BRANCH}](${REPO_URL})" >> ${RELEASE_MD}
@@ -236,6 +237,7 @@ jobs:
             bash ${SCRIPT_FILE}
 
             cat ${SCRIPT_FILE}
+            # 记录到 release.md
             # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
             code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
             # 折叠使用bash代码块 高亮代码
@@ -243,7 +245,6 @@ jobs:
             echo -e "\n<details>\n<summary>Bash</summary>" >> ${RELEASE_MD}
             echo -e "\n```bash\n${code_script}\n```" >> ${RELEASE_MD}
             echo -e "\n</details>" >> ${RELEASE_MD}
-
           fi
 
       - name: Update feeds
@@ -253,6 +254,7 @@ jobs:
           echo -e "Current working directory: $(pwd)"
 
           cat ./feeds.conf.default
+          # 记录到 release.md
           # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
           code_feeds=$(grep '^[^#]' ./feeds.conf.default | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
           # 折叠使用bash代码块 高亮代码
@@ -308,6 +310,7 @@ jobs:
             bash ${SCRIPT_FILE}
 
             cat ${SCRIPT_FILE}
+            # 记录到 release.md
             # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
             code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
             # 折叠使用bash代码块 高亮代码
@@ -342,6 +345,7 @@ jobs:
           echo -e "$(($(nproc) + 1)) thread compile"
           make -j$(($(nproc) + 1)) V=s
           # || make -j1 V=s
+          # 记录到 release.md
           echo -e "\n### Compile finished Time" >> ${RELEASE_MD}
           echo -e "\n- [x]$(date +"%Y-%m-%d %H:%M:%S %z")" >> ${RELEASE_MD}
           echo "status=success" >> ${GITHUB_OUTPUT}
@@ -370,6 +374,7 @@ jobs:
 
           rm -rf packages
 
+          # 记录到 release.md
           echo -e "\n### Tested or NOT\n\n" >> ${RELEASE_MD}
 
           for file in *.bin
@@ -387,8 +392,8 @@ jobs:
           # 获取当前的时间戳
           echo -e "timestamp=$(date +"%y%mw%V")" >> ${GITHUB_OUTPUT}
 
-          # 在当前目录 读取config文件中所有含有=的行 拼接成一起 输出到release.md
           if [[ -f ${file_config} ]]; then
+            # 记录到 release.md
             # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
             config=$(grep '^[^#]' ${file_config} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
             # 折叠使用makefile代码块 高亮config设置
