@@ -7,29 +7,30 @@ on:
   workflow_dispatch:
     inputs:
       defconfig_config:
-        description: "Select the .config branch in defconfig"
+        description: "[defconfig] Select the .config branch"
         required: true
         default: "mt7981-ax3000"
         type: choice
         options:
           - mt7981-ax3000
+          - mt7986-ax4200
           - mt7986-ax6000
           - mt7986-ax6000-256m
       builder_name:
         description: "Set OpenWrt builder signature."
         required: false
-        default: "yourname"
+        default: "grinch27"
         type: string
 
 env:
   REPO_URL: https://github.com/grinch27/immortalwrt-mt798x
   REPO_BRANCH: openwrt-21.02
   TZ: America/New_York
-  # Path 为绝对路径 DIR 为文件夹名称
+  # Path 使用绝对路径 DIR 使用文件夹名称
   PATH_BUILD: /builder
   PATH_REPO: /builder/openwrt
   PATH_OUTPUT: /builder/openwrt/output
-  # Files 文件路径 默认相对于仓库目录路径
+  # Files 文件路径 默认./相对于仓库目录路径
   FEEDS_CONF: ./feeds.conf.default
   FILES: ./files
   CONFIG_FILE: ./defconfig/${{ inputs.defconfig_config }}.config
@@ -52,14 +53,15 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         working-directory: /
         run: |
+          echo -e "Current working directory: $(pwd)"
+          # 删除docker所有镜像
           docker rmi $(docker images -q) 2>/dev/null
           # 如果环境变量 AGENT_TOOLSDIRECTORY 不为空，则删除该目录及其所有内容
           [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
           # 删除指定的目录及其所有内容，忽略所有错误信息
           sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android 2>/dev/null
-          # 关闭所有交换空间
+          # 关闭所有交换空间 删除指定的交换文件
           sudo swapoff -a
-          # 删除指定的交换文件
           sudo rm -f /swapfile /mnt/swapfile
           # 更新 Ubuntu 的软件包列表
           sudo -E apt-get -y update
@@ -145,9 +147,8 @@ jobs:
           zlib1g-dev 
           # 重新加载 systemd 的配置
           sudo -E systemctl daemon-reload
-          # 删除所有不再需要的软件包及其配置文件
+          # 删除所有不再需要的软件包及其配置文件, 清理 apt 的缓存
           sudo -E apt-get -y autoremove --purge
-          # 清理 apt 的缓存
           sudo -E apt-get clean
           # 从 root 用户的 .bashrc 和 .profile 文件中删除包含 NVM_DIR 和 skel 的行
           sudo sed -i '/NVM_DIR/d;/skel/d' /root/{.bashrc,.profile}
@@ -162,36 +163,29 @@ jobs:
         working-directory: /
         if: ${{ steps.init.outputs.status }} == 'success' && !cancelled()
         run: |
-          # sudo dd if=/dev/zero of=/tmp/disk.img bs=1M count=1024
-          # sudo mkfs.ext2 /tmp/disk.img
-          # sudo mkdir /mnt/disk
-          # sudo mount -o loop /tmp/disk.img /mnt/disk
-          # 计算 /mnt 分区的可用空间（减去 1GB 作为缓冲）
+          echo -e "Current working directory: $(pwd)"
+
+          # 计算 /mnt 分区的可用空间（减去 1GB 作为缓冲）, 计算根分区的可用空间（减去 4GB 作为缓冲）
           mnt_size=$(expr $(df -h /mnt | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 1)
-          # 计算根分区的可用空间（减去 4GB 作为缓冲）
           root_size=$(expr $(df -h / | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 4)
-          # 创建一个大小为 mnt_size 的文件 /mnt/mnt.img
+          # 创建一个大小为 mnt_size 的文件 /mnt/mnt.img, 创建一个大小为 root_size 的文件 /root.img
           sudo truncate -s "${mnt_size}"G /mnt/mnt.img
-          # 创建一个大小为 root_size 的文件 /root.img
           sudo truncate -s "${root_size}"G /root.img
-          # 将这两个文件关联到 loop 设备
+          # 将这两个文件关联到 loop 设备, 在这两个 loop 设备上创建物理卷, 创建一个名为 github 的卷组，包含这两个物理卷
           sudo losetup /dev/loop6 /mnt/mnt.img
           sudo losetup /dev/loop7 /root.img
-          # 在这两个 loop 设备上创建物理卷
           sudo pvcreate /dev/loop6
           sudo pvcreate /dev/loop7
-          # 创建一个名为 github 的卷组，包含这两个物理卷
           sudo vgcreate github /dev/loop6 /dev/loop7
-          # 在 github 卷组上创建一个名为 runner 的逻辑卷，使用所有可用空间
+
+          # 在 github 卷组上创建一个名为 runner 的逻辑卷，使用所有可用空间, 在 runner 逻辑卷上创建一个 XFS 文件系统
           sudo lvcreate -n runner -l 100%FREE github
-          # 在 runner 逻辑卷上创建一个 XFS 文件系统
           sudo mkfs.xfs /dev/github/runner
-          # 创建一个挂载点 ${PATH_BUILD}
+          # 创建一个挂载点 ${PATH_BUILD}, 将 runner 逻辑卷挂载到 ${PATH_BUILD}, 将 ${PATH_BUILD} 的所有者和组更改为 runner
           sudo mkdir -p ${PATH_BUILD}
-          # 将 runner 逻辑卷挂载到 ${PATH_BUILD}
           sudo mount /dev/github/runner ${PATH_BUILD}
-          # 将 ${PATH_BUILD} 的所有者和组更改为 runner
           sudo chown -R runner.runner ${PATH_BUILD}
+
           # 显示所有文件系统的磁盘空间使用情况
           df -Th
           echo "status=success" >> ${GITHUB_OUTPUT}
@@ -202,25 +196,16 @@ jobs:
         if: ${{ steps.disk.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
-          # Clone source code 克隆 ${REPO_URL} 仓库到 PATH_REPO 绝对路径
+
+          echo -e "REPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]"
           # --quiet 静默模式不输出任何信息 --single-branch 只克隆指定的分支 --depth=1 只克隆最近的一次提交 --branch=${REPO_BRANCH} 要克隆的分支
           git clone --quiet --single-branch --depth=1 --branch=${REPO_BRANCH} ${REPO_URL} ${PATH_REPO}
 
           # 符号链接，通过目标 ${GITHUB_WORKSPACE}/${DIR_REPO} 访问到源完整路径 ${PATH_REPO}
           # ln -sf ${PATH_REPO} ${GITHUB_WORKSPACE}/${DIR_REPO}
 
-          # 打印仓库 URL、分支和标签名称
-          # echo -e "REPO_URL: [ ${REPO_URL} ]\nREPO_BRANCH: [ ${REPO_BRANCH} ]\nTAGS_NAME: [ ${TAGS_NAME} ]"
-
           # 显示当前工作目录的磁盘空间使用情况
           df -hT ${PWD}
-
-          # 将仓库 URL 写入到 GITHUB_OUTPUT 环境变量指定的文件中
-          # echo "REPO_URL=${REPO_URL}" >> ${GITHUB_OUTPUT}
-          # echo "TAGS_NAME=${TAGS_NAME}" >> ${GITHUB_OUTPUT}
-          # Set output information 将构建标签和日期信息写入到 GITHUB_OUTPUT 环境变量指定的文件中
-          # echo "build_tag=OpenWrt_${TAGS_NAME}_${{ inputs.openwrt_storage }}_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
-          echo "build_tag=Immortalwrt_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
 
           echo "status=success" >> ${GITHUB_OUTPUT}
 
@@ -231,8 +216,8 @@ jobs:
           if [[ -e "${FEEDS_CONF}" && ! "${FEEDS_CONF}" -ef "${PATH_REPO}/feeds.conf.default" ]]; then
             echo -e "FEEDS_CONF: ${FEEDS_CONF}"
             cp -f ${FEEDS_CONF} ${PATH_REPO}/feeds.conf.default
-            cat ./feeds.conf.default
           fi
+          cat ./feeds.conf.default
 
       - name: (DIY_P1.sh) after load feeds, before update feeds
         working-directory: ${{ env.PATH_REPO }}
@@ -282,8 +267,8 @@ jobs:
             echo "make oldconfig: update .config file..."
             make oldconfig
           fi
-
           cat ./.config
+
           # [[ -e "files" ]] && mv -f files openwrt/files
           echo "status=success" >> ${GITHUB_OUTPUT}
 
@@ -310,8 +295,8 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           echo -e "make download: $(($(nproc) + 1)) thread"
           make download -j$(($(nproc) + 1))
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
+          # find dl -size -1024c -exec ls -l {} \;
+          # find dl -size -1024c -exec rm -f {} \;
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Compile the OpenWrt
@@ -323,7 +308,8 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "$(($(nproc) + 1)) thread compile"
-          make -j$(($(nproc) + 1)) V=s || make -j1 V=s
+          make -j$(($(nproc) + 1)) V=s
+          # || make -j1 V=s
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
@@ -342,9 +328,14 @@ jobs:
       - name: Setup output
         id: output
         working-directory: ${{ env.PATH_OUTPUT }}
+        env:
+          FILE_CONFIG: ./config
         if: ${{ steps.copy.outputs.status }} == 'success' && !cancelled()
         run: |
+          echo -e "Current working directory: $(pwd)"
+
           rm -rf packages
+
           for file in *.bin
           do
             if [[ ! -d "${file}" ]]
@@ -352,20 +343,48 @@ jobs:
               sha256sum "${file}" >"${file}.sha"
             fi
           done
+
+          # 将仓库 URL 写入到 GITHUB_OUTPUT 环境变量指定的文件中
+          # echo "TAGS_NAME=${TAGS_NAME}" >> ${GITHUB_OUTPUT}
+          # Set output information 将构建标签和日期信息写入到 GITHUB_OUTPUT 环境变量指定的文件中
+          # echo "build_tag=OpenWrt_${TAGS_NAME}_${{ inputs.openwrt_storage }}_$(date +"%Y.%m")" >> ${GITHUB_OUTPUT}
+          # echo "build_tag=$(date +"%y%mw%V")_Immortalwrt" >> ${GITHUB_OUTPUT}
+          # 获取当前的时间戳并写入到输出文件
+          echo "timestamp=$(date +"%y%mw%V")" >> ${GITHUB_OUTPUT}
+
+          # 读取config文件中所有含有=的行 拼接成一起 输出
+          if [[ -f ${FILE_CONFIG} ]]; then
+            config=$(grep '=' ${FILE_CONFIG} | sed 's/ /\\\n/g' | sed 's/=//g')
+            echo "config=${config}" >> "${GITHUB_OUTPUT}"
+          fi
+
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Upload OpenWrt to Release
         uses: ncipollo/release-action@main
         if: ${{ steps.output.outputs.status }} == 'success' && !cancelled()
+        env:
+          config_branch: ${{ inputs.defconfig_config }}
+          config_setting: ${{ steps.output.outputs.config }}
+          timestamp: ${{ steps.output.outputs.timestamp }}
+          builder_name: ${{ inputs.builder_name }}
         with:
-          tag: ${{ steps.codes.outputs.build_tag }}
+          # https://github.com/ncipollo/release-action/blob/main/README.zh-Hans.md
+          name: "${{ env.timestamp }} ${{ env.config_branch }}"
+          tag: "${{ env.config_branch }}"
           artifacts: ${{ env.PATH_OUTPUT }}/*
           allowUpdates: true
           removeArtifacts: false
           replacesArtifacts: true
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            # 未经测试
+            # Build ${{ env.config_branch }} - by ${{ env.builder_name }}
+
+            未经测试
+
+            ## config setting
+
+            ${{ env.config_setting }}
 
       - name: Clear workspace
         id: clean
