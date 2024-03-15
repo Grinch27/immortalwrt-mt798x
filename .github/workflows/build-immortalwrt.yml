@@ -291,6 +291,7 @@ jobs:
         run: |
           echo -e "Current working directory: $(pwd)"
           echo -e "make download: $(($(nproc) + 1)) thread"
+          cat ./.config
           make download -j$(($(nproc) + 1))
           # find dl -size -1024c -exec ls -l {} \;
           # find dl -size -1024c -exec rm -f {} \;
