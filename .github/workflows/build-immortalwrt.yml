@@ -36,8 +36,6 @@ env:
   CONFIG_FILE: ./defconfig/${{ inputs.defconfig_config }}.config
   DIY_P1_SH: ./config/immortalwrt-master/diy-part1.sh
   DIY_P2_SH: ./config/immortalwrt-master/diy-part2.sh
-  # release 说明文件
-  RELEASE_MD: /builder/openwrt/release.md
 
 jobs:
   build:
@@ -194,9 +192,6 @@ jobs:
       - name: Clone source code
         id: codes
         working-directory: ${{ env.PATH_BUILD }}
-        env:
-          config_branch: ${{ inputs.defconfig_config }}
-          builder_name: ${{ inputs.builder_name }}
         if: ${{ steps.disk.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
@@ -207,11 +202,6 @@ jobs:
 
           # 符号链接，通过目标 ${GITHUB_WORKSPACE}/${DIR_REPO} 访问到源完整路径 ${PATH_REPO}
           # ln -sf ${PATH_REPO} ${GITHUB_WORKSPACE}/${DIR_REPO}
-
-          # 记录到 release.md
-          echo -e "# Build ${config_branch} - by ${builder_name}" >> ${RELEASE_MD}
-          echo -e "\n### Source Code" >> ${RELEASE_MD}
-          echo -e "\n- [${REPO_BRANCH}](${REPO_URL})" >> ${RELEASE_MD}
 
           df -hT ${PWD}
           echo "status=success" >> ${GITHUB_OUTPUT}
@@ -235,16 +225,7 @@ jobs:
             echo -e "SCRIPT_FILE: ${SCRIPT_FILE}"
             chmod +x ${SCRIPT_FILE}
             bash ${SCRIPT_FILE}
-
             cat ${SCRIPT_FILE}
-            # 记录到 release.md
-            # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
-            code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
-            # 折叠使用bash代码块 高亮代码
-            echo -e "\n### ${SCRIPT_FILE}" >> ${RELEASE_MD}
-            echo -e "\n<details>\n<summary>Bash</summary>" >> ${RELEASE_MD}
-            echo -e "\n```bash\n${code_script}\n```" >> ${RELEASE_MD}
-            echo -e "\n</details>" >> ${RELEASE_MD}
           fi
 
       - name: Update feeds
@@ -252,17 +233,7 @@ jobs:
         working-directory: ${{ env.PATH_REPO }}
         run: |
           echo -e "Current working directory: $(pwd)"
-
           cat ./feeds.conf.default
-          # 记录到 release.md
-          # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
-          code_feeds=$(grep '^[^#]' ./feeds.conf.default | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
-          # 折叠使用bash代码块 高亮代码
-          echo -e "\n### feeds setting" >> ${RELEASE_MD}
-          echo -e "\n<details>\n<summary>feeds.conf.default</summary>" >> ${RELEASE_MD}
-          echo -e "\n```bash\n${code_feeds}\n```" >> ${RELEASE_MD}
-          echo -e "\n</details>" >> ${RELEASE_MD}
-
           ./scripts/feeds update -a
           echo "status=success" >> ${GITHUB_OUTPUT}
 
@@ -308,16 +279,7 @@ jobs:
             echo -e "SCRIPT_FILE: ${SCRIPT_FILE}"
             chmod +x ${SCRIPT_FILE}
             bash ${SCRIPT_FILE}
-
             cat ${SCRIPT_FILE}
-            # 记录到 release.md
-            # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
-            code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
-            # 折叠使用bash代码块 高亮代码
-            echo -e "\n### ${SCRIPT_FILE}" >> ${RELEASE_MD}
-            echo -e "\n<details>\n<summary>Bash</summary>" >> ${RELEASE_MD}
-            echo -e "\n```bash\n${code_script}\n```" >> ${RELEASE_MD}
-            echo -e "\n</details>" >> ${RELEASE_MD}
           fi
 
       - name: Download package
@@ -345,9 +307,6 @@ jobs:
           echo -e "$(($(nproc) + 1)) thread compile"
           make -j$(($(nproc) + 1)) V=s
           # || make -j1 V=s
-          # 记录到 release.md
-          echo -e "\n### Compile finished Time" >> ${RELEASE_MD}
-          echo -e "\n- [x]$(date +"%Y-%m-%d %H:%M:%S %z")" >> ${RELEASE_MD}
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
@@ -374,26 +333,85 @@ jobs:
 
           rm -rf packages
 
-          # 记录到 release.md
-          echo -e "\n### Tested or NOT\n\n" >> ${RELEASE_MD}
-
           for file in *.bin
           do
             if [[ ! -d "${file}" ]]
             then
               sha256sum "${file}" > "${file}.sha"
+            fi
+          done
+
+          echo -e "timestamp=$(date +"%y%mw%V")" >> ${GITHUB_OUTPUT}
+          echo "status=success" >> ${GITHUB_OUTPUT}
+
+      - name: "[release.md] Record release.md"
+        id: record
+        working-directory: /
+        env:
+          config_branch: ${{ inputs.defconfig_config }}
+          builder_name: ${{ inputs.builder_name }}
+          file_config: ./config
+          RELEASE_MD: ${{ env.PATH_REPO }}/release.md
+        if: ${{ steps.output.outputs.status }} == 'success' && !cancelled()
+        run: |
+          # 切换到源码目录
+          cd ${PATH_REPO}
+          echo -e "Current working directory: $(pwd)"
+
+          # 记录Clone源码的分支和构建者
+          echo -e "# Build ${config_branch} - by ${builder_name}" >> ${RELEASE_MD}
+          echo -e "\n### Source Code" >> ${RELEASE_MD}
+          echo -e "\n- [${REPO_BRANCH}](${REPO_URL})" >> ${RELEASE_MD}
+
+          # 记录DIY_P1.sh
+          SCRIPT_FILE=${{ env.DIY_P1_SH }}
+          # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
+          code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
+          # 折叠使用bash代码块 高亮代码
+          echo -e "\n### ${SCRIPT_FILE}" >> ${RELEASE_MD}
+          echo -e "\n<details>\n<summary>Bash</summary>" >> ${RELEASE_MD}
+          echo -e "\n```bash\n${code_script}\n```" >> ${RELEASE_MD}
+          echo -e "\n</details>" >> ${RELEASE_MD}
+
+          # 记录feeds.conf.default
+          # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
+          code_feeds=$(grep '^[^#]' ./feeds.conf.default | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
+          # 折叠使用bash代码块 高亮代码
+          echo -e "\n### feeds setting" >> ${RELEASE_MD}
+          echo -e "\n<details>\n<summary>feeds.conf.default</summary>" >> ${RELEASE_MD}
+          echo -e "\n```bash\n${code_feeds}\n```" >> ${RELEASE_MD}
+          echo -e "\n</details>" >> ${RELEASE_MD}
+
+          # 记录DIY_P2.sh
+          SCRIPT_FILE=${{ env.DIY_P2_SH }}
+          # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
+          code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
+          # 折叠使用bash代码块 高亮代码
+          echo -e "\n### ${SCRIPT_FILE}" >> ${RELEASE_MD}
+          echo -e "\n<details>\n<summary>Bash</summary>" >> ${RELEASE_MD}
+          echo -e "\n```bash\n${code_script}\n```" >> ${RELEASE_MD}
+          echo -e "\n</details>" >> ${RELEASE_MD}
+
+          # 记录编译完成时间
+          echo -e "\n### Record Time" >> ${RELEASE_MD}
+          echo -e "\n- [x]$(date +"%Y-%m-%d %H:%M:%S %z")" >> ${RELEASE_MD}
+
+          # 切换到Output目录
+          cd ${PATH_OUTPUT}
+          echo -e "Current working directory: $(pwd)"
+
+          # 记录Output bin文件
+          echo -e "\n### Tested or NOT\n\n" >> ${RELEASE_MD}
+          for file in *.bin
+          do
+            if [[ ! -d "${file}" ]]
+            then
               echo -e "- [ ] ${file}" >> ${RELEASE_MD}
             fi
           done
 
-          # 将仓库 URL 写入到 GITHUB_OUTPUT 环境变量指定的文件中
-          # echo "TAGS_NAME=${TAGS_NAME}" >> ${GITHUB_OUTPUT}
-          # Set output information 将构建标签和日期信息写入到 GITHUB_OUTPUT 环境变量指定的文件中
-          # 获取当前的时间戳
-          echo -e "timestamp=$(date +"%y%mw%V")" >> ${GITHUB_OUTPUT}
-
+          # 记录.config配置
           if [[ -f ${file_config} ]]; then
-            # 记录到 release.md
             # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
             config=$(grep '^[^#]' ${file_config} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
             # 折叠使用makefile代码块 高亮config设置
@@ -403,7 +421,11 @@ jobs:
             echo -e "\n</details>" >> ${RELEASE_MD}
           fi
 
-          echo "status=success" >> ${GITHUB_OUTPUT}
+          # 将仓库 URL 写入到 GITHUB_OUTPUT 环境变量指定的文件中
+          # echo "TAGS_NAME=${TAGS_NAME}" >> ${GITHUB_OUTPUT}
+          # Set output information 将构建标签和日期信息写入到 GITHUB_OUTPUT 环境变量指定的文件中
+
+          echo -e "record=${RELEASE_MD}" >> ${GITHUB_OUTPUT}
 
       - name: Upload OpenWrt to Release
         uses: ncipollo/release-action@main
@@ -411,6 +433,7 @@ jobs:
         env:
           config_branch: ${{ inputs.defconfig_config }}
           timestamp: ${{ steps.output.outputs.timestamp }}
+          RELEASE_MD: ${{ steps.record.outputs.record }}
         with:
           # https://github.com/ncipollo/release-action/blob/main/README.zh-Hans.md
           name: "${{ env.timestamp }} ${{ env.config_branch }}"
@@ -420,7 +443,7 @@ jobs:
           removeArtifacts: false
           replacesArtifacts: true
           token: "${{ secrets.GITHUB_TOKEN }}"
-          bodyFile: "${{ env.PATH_OUTPUT }}/${{ env.RELEASE_MD }}"
+          bodyFile: "${{ env.RELEASE_MD }}"
 
       - name: Clear workspace
         id: clean
