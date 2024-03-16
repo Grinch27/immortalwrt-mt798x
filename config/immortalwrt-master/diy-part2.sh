@@ -58,11 +58,26 @@ CONFIG_PACKAGE_luci-i18n-usb-printer-zh-cn=n
 
 
 # ----- install -----
+# bash curl dos2unix unix2dos lrzsz
+echo "
+CONFIG_PACKAGE_bash=y
+
+CONFIG_PACKAGE_curl=y
+CONFIG_PACKAGE_libcurl=y
+
+CONFIG_BUSYBOX_DEFAULT_DOS2UNIX=y
+CONFIG_PACKAGE_dos2unix=y
+
+CONFIG_BUSYBOX_DEFAULT_UNIX2DOS=y
+CONFIG_PACKAGE_unix2dos=y
+
+CONFIG_PACKAGE_lrzsz=y
+" >> .config
+
 # nginx Luci
 echo "
 # nginx-ssl includes nginx
 CONFIG_PACKAGE_luci-ssl-nginx=y
-
 CONFIG_PACKAGE_nginx=n
 CONFIG_PACKAGE_nginx-ssl=y
 
@@ -73,21 +88,6 @@ CONFIG_PACKAGE_nginx-mod-luci-ssl=y
 CONFIG_PACKAGE_nginx-util=y
 CONFIG_PACKAGE_nginx-ssl-util=y
 CONFIG_PACKAGE_nginx-ssl-util-nopcre=n
-
-" >> .config
-
-# dos2unix unix2dos
-echo "
-CONFIG_BUSYBOX_DEFAULT_DOS2UNIX=y
-CONFIG_PACKAGE_dos2unix=y
-
-CONFIG_BUSYBOX_DEFAULT_UNIX2DOS=y
-CONFIG_PACKAGE_unix2dos=y
-" >> .config
-
-# lrzsz
-echo "
-CONFIG_PACKAGE_lrzsz=y
 " >> .config
 
 # udpxy

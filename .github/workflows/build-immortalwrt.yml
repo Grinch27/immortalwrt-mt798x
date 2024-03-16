@@ -391,12 +391,12 @@ jobs:
           # 记录DIY_P2.sh
           SCRIPT_FILE=${{ env.DIY_P2_SH }}
           # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
-          code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
+          # code_script=$(grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g')
           # 折叠使用bash代码块 高亮代码
           echo -e "\n### ${SCRIPT_FILE}" >> ${RELEASE_MD}
           echo -e "\n<details>\n<summary>Bash</summary>" >> ${RELEASE_MD}
           echo -e "\n```bash" >> ${RELEASE_MD}
-          echo "${code_script}" >> ${RELEASE_MD}
+          grep '^[^#]' ${SCRIPT_FILE} | grep -v '^\s*$' | sed 's/\s+$/\\\n/g' >> ${RELEASE_MD}
           echo -e "```" >> ${RELEASE_MD}
           echo -e "\n</details>" >> ${RELEASE_MD}
 
