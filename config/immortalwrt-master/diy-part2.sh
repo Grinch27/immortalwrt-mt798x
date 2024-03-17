@@ -95,3 +95,9 @@ echo "
 CONFIG_PACKAGE_luci-app-udpxy=y
 CONFIG_PACKAGE_udpxy=y
 " >> .config
+
+# vlmcsd
+echo "
+CONFIG_PACKAGE_luci-app-vlmcsd=y
+CONFIG_PACKAGE_vlmcsd=y
+" >> .config
