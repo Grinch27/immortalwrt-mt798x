@@ -1,9 +1,7 @@
 name: Build Immortalwrt
 
 on:
-  # 调度事件（repository_dispatch）触发
   repository_dispatch:
-  # 手动触发（workflow_dispatch）
   workflow_dispatch:
     inputs:
       defconfig_config:
@@ -21,6 +19,11 @@ on:
         required: false
         default: "grinch27"
         type: string
+      DIR_DIY:
+        description: "[DIY] directory includes: .config, feeds.conf.default, diy-part1.sh, diy-part2.sh, files/"
+        required: true
+        default: "./DIY/immortalwrt-master"
+        type: string
 
 env:
   REPO_URL: https://github.com/grinch27/immortalwrt-mt798x
@@ -31,11 +34,11 @@ env:
   PATH_REPO: /builder/openwrt
   PATH_OUTPUT: /builder/openwrt/output
   # Files 文件路径 默认./相对于仓库目录路径
-  FEEDS_CONF: ./feeds.conf.default
-  FILES: ./files
-  CONFIG_FILE: ./defconfig/${{ inputs.defconfig_config }}.config
-  DIY_P1_SH: ./config/immortalwrt-master/diy-part1.sh
-  DIY_P2_SH: ./config/immortalwrt-master/diy-part2.sh
+  DEFCONFIG_FILE: ./defconfig/${{ inputs.defconfig_config }}.config
+  FILES: ${{ inputs.DIR_DIY }}/files
+  FEEDS_DEF: ${{ inputs.DIR_DIY }}/feeds.conf.default
+  DIY_P1_SH: ${{ inputs.DIR_DIY }}/diy-part1.sh
+  DIY_P2_SH: ${{ inputs.DIR_DIY }}/diy-part2.sh
 
 jobs:
   build:
@@ -210,9 +213,9 @@ jobs:
         working-directory: ${{ env.PATH_REPO }}
         run: |
           echo -e "Current working directory: $(pwd)"
-          if [[ -e "${FEEDS_CONF}" && ! "${FEEDS_CONF}" -ef "${PATH_REPO}/feeds.conf.default" ]]; then
-            echo -e "FEEDS_CONF: ${FEEDS_CONF}"
-            cp -f ${FEEDS_CONF} ${PATH_REPO}/feeds.conf.default
+          if [[ -e "${FEEDS_DEF}" && ! "${FEEDS_DEF}" -ef "${PATH_REPO}/feeds.conf.default" ]]; then
+            echo -e "FEEDS_DEF: ${FEEDS_DEF}"
+            cp -f ${FEEDS_DEF} ${PATH_REPO}/feeds.conf.default
           fi
 
       - name: (DIY_P1.sh) after load feeds, before update feeds
@@ -246,6 +249,19 @@ jobs:
           ./scripts/feeds install -a
           echo "status=success" >> ${GITHUB_OUTPUT}
 
+      - name: (/files) Load custom files
+        id: files
+        working-directory: ${{ env.PATH_REPO }}
+        run: |
+          echo -e "Current working directory: $(pwd)"
+
+          mkdir -p ./files/etc/config
+          if [[ -e "${FILES}" ]]; then
+              cp -rf ${FILES}/* ./files/
+          fi
+
+          echo "status=success" >> ${GITHUB_OUTPUT}
+
       - name: (.config) Load custom configuration
         id: config
         working-directory: ${{ env.PATH_REPO }}
@@ -257,16 +273,12 @@ jobs:
             make defconfig
           fi
 
-          if [[ -e "${CONFIG_FILE}" && ! "${CONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
-            echo -e "CONFIG_FILE: ${CONFIG_FILE}"
-            cp -f ${CONFIG_FILE} ${PATH_REPO}/.config
-            cat ./.config
-            echo "make oldconfig: update .config file..."
-            make oldconfig
+          if [[ -e "${DEFCONFIG_FILE}" && ! "${DEFCONFIG_FILE}" -ef "${PATH_REPO}/.config" ]]; then
+            echo -e "DEFCONFIG_FILE: ${DEFCONFIG_FILE}"
+            cp -f ${DEFCONFIG_FILE} ${PATH_REPO}/.config
           fi
-          cat ./.config
 
-          # [[ -e "files" ]] && mv -f files openwrt/files
+          cat ./.config
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: (DIY_P2.sh) after install feeds, before download package
@@ -290,9 +302,10 @@ jobs:
         if: ${{ steps.install.outputs.status }} == 'success' && !cancelled()
         run: |
           echo -e "Current working directory: $(pwd)"
-          echo -e "make download: $(($(nproc) + 1)) thread"
+          echo "make oldconfig: update .config file..."
           make oldconfig
           cat ./.config
+          echo -e "make download: $(($(nproc) + 1)) thread"
           make download -j$(($(nproc) + 1))
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
@@ -308,7 +321,6 @@ jobs:
           echo -e "Current working directory: $(pwd)"
           echo -e "$(($(nproc) + 1)) thread compile"
           make -j$(($(nproc) + 1)) V=s
-          # || make -j1 V=s
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Copy to output
@@ -348,16 +360,14 @@ jobs:
 
       - name: "[release.md] Record release.md"
         id: record
-        working-directory: /
+        working-directory: ${{ env.PATH_REPO }}
         env:
           config_branch: ${{ inputs.defconfig_config }}
           builder_name: ${{ inputs.builder_name }}
           file_config: ./config
-          RELEASE_MD: ${{ env.PATH_REPO }}/release.md
+          RELEASE_MD: ./release.md
         if: ${{ steps.output.outputs.status }} == 'success' && !cancelled()
         run: |
-          # 切换到源码目录
-          cd ${PATH_REPO}
           echo -e "Current working directory: $(pwd)"
 
           # 记录Clone源码的分支和构建者
@@ -400,24 +410,6 @@ jobs:
           echo -e "```" >> ${RELEASE_MD}
           echo -e "\n</details>" >> ${RELEASE_MD}
 
-          # 记录编译完成时间
-          echo -e "\n### Record Time" >> ${RELEASE_MD}
-          echo -e "\n- [x] $(date +"%Y-%m-%d %H:%M:%S %z")" >> ${RELEASE_MD}
-
-          # 切换到Output目录
-          cd ${PATH_OUTPUT}
-          echo -e "Current working directory: $(pwd)"
-
-          # 记录Output bin文件
-          echo -e "\n### Tested or NOT\n\n" >> ${RELEASE_MD}
-          for file in *.bin
-          do
-            if [[ ! -d "${file}" ]]
-            then
-              echo -e "- [ ] ${file}" >> ${RELEASE_MD}
-            fi
-          done
-
           # 记录.config配置
           if [[ -f ${file_config} ]]; then
             # 获取所有不以#开头的非空非空格行 并将结尾空格替换为换行符
@@ -430,6 +422,24 @@ jobs:
             echo -e "```" >> ${RELEASE_MD}
             echo -e "\n</details>" >> ${RELEASE_MD}
           fi
+
+          # 记录编译完成时间
+          echo -e "\n### Record Time" >> ${RELEASE_MD}
+          echo -e "\n- [x] $(date +"%Y-%m-%d %H:%M:%S %z")" >> ${RELEASE_MD}
+
+          # 切换到Output目录
+          # cd ${PATH_OUTPUT}
+          # echo -e "Current working directory: $(pwd)"
+
+          # 记录Output bin文件
+          echo -e "\n### Tested or NOT\n\n" >> ${RELEASE_MD}
+          for file in ${PATH_OUTPUT}/*.bin
+          do
+            if [[ ! -d "${file}" ]]
+            then
+              echo -e "- [ ] ${file}" >> ${RELEASE_MD}
+            fi
+          done
 
           # 将仓库 URL 写入到 GITHUB_OUTPUT 环境变量指定的文件中
           # echo "TAGS_NAME=${TAGS_NAME}" >> ${GITHUB_OUTPUT}
