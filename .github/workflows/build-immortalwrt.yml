@@ -40,12 +40,12 @@ env:
   DIY_P1_SH: ${{ inputs.DIR_DIY }}/diy-part1.sh
   DIY_P2_SH: ${{ inputs.DIR_DIY }}/diy-part2.sh
 
+permissions: write-all
+
 jobs:
   runner-image:
     name: ubuntu-latest - runner-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       RUNNER_IMAGE: ${{ steps.resolve-runner-image.outputs.RUNNER_IMAGE }}
     steps:
